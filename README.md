@@ -6,7 +6,7 @@
 Clone the repository
 
 ```bash
-https://github.com/gurudattaxd/Medical-chatbot-with-LLMs-Langchain-Pinecone-Flask-AWS-.git
+git clone https://github.com/gurudattaxd/Medical-chatbot-with-LLMs-Langchain-Pinecone-Flask-AWS-.git
 ```
 ### STEP 01- Create a conda environment after opening the repository
 
