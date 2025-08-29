@@ -1,20 +1,23 @@
-name: Deploy Application Docker Image to EC2 instance
+name: Deploy Application Docker Image to EC2
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
 
+permissions:
+  contents: read
 
 jobs:
-  Continuous-Integration:
+  continuous-integration:
+    name: Build and Push to ECR
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -22,28 +25,29 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPO }}
-          IMAGE_TAG: latest
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: ${{ secrets.ECR_REPO }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .  
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" .
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          echo "image=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-  Continuous-Deployment:
-    needs: Continuous-Integration
+  continuous-deployment:
+    name: Pull and Run on EC2
+    needs: continuous-integration
     runs-on: self-hosted
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -51,11 +55,17 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Run Docker Image to serve users
-         run: |
-          docker run -d \
+      - name: Pull and restart container
+        env:
+          IMAGE: ${{ needs.continuous-integration.outputs.image }}
+        run: |
+          docker pull "$IMAGE"
+          # Stop & remove existing container if present
+          docker ps -aq --filter "name=app" | xargs -r docker rm -f
+          # Run new container
+          docker run -d --name app \
             -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
             -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
             -e AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}" \
@@ -63,4 +73,4 @@ jobs:
             -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
             -e OPENAI_API_BASE="${{ secrets.OPENAI_API_BASE }}" \
             -p 8080:8080 \
-            "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPO }}:latest"
+            "$IMAGE"
