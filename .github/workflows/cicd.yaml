@@ -11,7 +11,8 @@ jobs:
   continuous-integration:
     name: Build and Push to ECR
     runs-on: ubuntu-latest
-
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}   # <-- Pass image reference to next job
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,14 +35,16 @@ jobs:
           REPOSITORY: ${{ secrets.ECR_REPO }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          echo "Building Docker image..."
           docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" .
+          echo "Pushing Docker image..."
           docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
-          echo "image=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "image=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   continuous-deployment:
     name: Pull and Run on EC2
     needs: continuous-integration
-    runs-on: self-hosted
+    runs-on: self-hosted   # <-- your EC2 runner must be self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,13 +61,15 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Pull and restart container
-        env:
-          IMAGE: ${{ needs.continuous-integration.outputs.image }}
         run: |
+          IMAGE="${{ needs.continuous-integration.outputs.image }}"
+          echo "Pulling image: $IMAGE"
           docker pull "$IMAGE"
-          # Stop & remove existing container if present
+
+          echo "Stopping old container (if running)..."
           docker ps -aq --filter "name=app" | xargs -r docker rm -f
-          # Run new container
+
+          echo "Starting new container..."
           docker run -d --name app \
             -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
             -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
