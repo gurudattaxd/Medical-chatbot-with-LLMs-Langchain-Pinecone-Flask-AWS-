@@ -9,18 +9,17 @@ from dotenv import load_dotenv
 from src.prompt import *
 import os
 
-
 app = Flask(__name__)
-
 
 load_dotenv()
 
-PINECONE_API_KEY=os.environ.get('PINECONE_API_KEY')
-OPENAI_API_KEY=os.environ.get('OPENAI_API_KEY')
+PINECONE_API_KEY = os.environ.get('PINECONE_API_KEY')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+OPENAI_API_BASE = os.environ.get('OPENAI_API_BASE', 'https://openrouter.ai/api/v1')
 
 os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-
+os.environ["OPENAI_API_BASE"] = OPENAI_API_BASE
 
 embeddings = download_hugging_face_embeddings()
 
@@ -31,12 +30,15 @@ docsearch = PineconeVectorStore.from_existing_index(
     embedding=embeddings
 )
 
-
-
-
 retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k":3})
 
-chatModel = ChatOpenAI(model="gpt-4o")
+# Configure ChatOpenAI to use OpenRouter
+chatModel = ChatOpenAI(
+    model="gpt-4o",  # You can also use OpenRouter specific models like "openrouter/auto"
+    base_url=OPENAI_API_BASE,
+    api_key=OPENAI_API_KEY
+)
+
 prompt = ChatPromptTemplate.from_messages(
     [
         ("system", system_prompt),
@@ -47,13 +49,9 @@ prompt = ChatPromptTemplate.from_messages(
 question_answer_chain = create_stuff_documents_chain(chatModel, prompt)
 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
-
-
 @app.route("/")
 def index():
     return render_template('chat.html')
-
-
 
 @app.route("/get", methods=["GET", "POST"])
 def chat():
@@ -64,7 +62,5 @@ def chat():
     print("Response : ", response["answer"])
     return str(response["answer"])
 
-
-
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port= 8080, debug= True)
+    app.run(host="0.0.0.0", port=8080, debug=True)
