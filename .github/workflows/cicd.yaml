@@ -1,66 +1,72 @@
-name: CI/CD Pipeline — Build & Deploy to Docker Hub
+name: Deploy Application Docker Image to EC2 instance
 
 on:
   push:
-    branches:
-      - main    # Trigger on pushes to the main branch
+    branches: [main]
 
 jobs:
-  build-and-push:
+  Continuous-Integration:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPO }}
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .  
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  Continuous-Deployment:
+    needs: Continuous-Integration
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Log in to Docker Hub
-        run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" \
-            | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
-      - name: Build Docker image
-        run: |
-          IMAGE="gurudattaxd/medical-chatbot"
-          TAG_SHA="${{ github.sha }}"
-          echo "Building image: $IMAGE:$TAG_SHA"
-          docker build -t "$IMAGE:$TAG_SHA" -t "$IMAGE:latest" .
-
-      - name: Push Docker image
-        run: |
-          IMAGE="gurudattaxd/medical-chatbot"
-          TAG_SHA="${{ github.sha }}"
-          docker push "$IMAGE:$TAG_SHA"
-          docker push "$IMAGE:latest"
-
-      - name: Display pushed image info
-        run: echo "Pushed images: gurudattaxd/medical-chatbot:${{ github.sha }} and gurudattaxd/medical-chatbot:latest"
-
-  # Optional deployment step via SSH
-  deploy-to-ec2:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          host: ${{ secrets.EC2_HOST }}           # Your EC2 public IPv4
-          username: ubuntu                        # Use ec2-user if your instance uses Amazon Linux
-          key: ${{ secrets.EC2_SSH_KEY }}         # Private key (.pem) stored as a secret
-          script: |
-            IMAGE="gurudattaxd/medical-chatbot:latest"
-            echo "Pulling image: $IMAGE"
-            docker pull $IMAGE
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
-            echo "Stopping old container (if any)..."
-            docker ps -aq --filter "name=app" | xargs -r docker rm -f || true
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
 
-            echo "Starting new container on port 8080..."
-            docker run -d --name app \
-              -e PINECONE_API_KEY="${{ secrets.PINECONE_API_KEY }}" \
-              -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-              -e OPENAI_API_BASE="${{ secrets.OPENAI_API_BASE }}" \
-              -p 8080:8080 \
-              $IMAGE
-
-            echo "Application is now running at http://$HOST:8080"
+      - name: Run Docker Image to serve users
+        run: |
+          docker stop medical-chatbot || true && docker rm medical-chatbot || true
+          docker run -d --name medical-chatbot \
+            -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            -e AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}" \
+            -e PINECONE_API_KEY="${{ secrets.PINECONE_API_KEY }}" \
+            -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            -e OPENAI_API_BASE="${{ secrets.OPENAI_API_BASE }}" \
+            -p 8080:8080 \
+            "${{ steps.login-ecr.outputs.registry }}"/"${{ secrets.ECR_REPO }}":latest
