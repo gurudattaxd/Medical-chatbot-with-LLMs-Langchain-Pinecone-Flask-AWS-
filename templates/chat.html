@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medical Chatbot</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    /* Global Styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      height: 100vh;
+      width: 100%;
+      display: flex;
+      background: var(--bg-color);
+      color: var(--text-color);
+      transition: all 0.3s ease;
+    }
+
+    :root {
+      --bg-color: #f4f4f9;
+      --text-color: #222;
+      --primary-color: #3b82f6;
+      --secondary-color: #f1f5f9;
+      --sidebar-color: #fff;
+      --chat-bg: #fff;
+      --bot-msg-bg: #e0f2fe;
+      --user-msg-bg: #d1fae5;
+    }
+
+    body.dark {
+      --bg-color: #0f172a;
+      --text-color: #e2e8f0;
+      --primary-color: #60a5fa;
+      --secondary-color: #1e293b;
+      --sidebar-color: #1e293b;
+      --chat-bg: #0f172a;
+      --bot-msg-bg: #1d4ed8;
+      --user-msg-bg: #059669;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 280px;
+      background: var(--sidebar-color);
+      border-right: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s ease;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      font-size: 20px;
+      font-weight: bold;
+      text-align: center;
+      border-bottom: 1px solid #ccc;
+    }
+
+    .history {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+    }
+
+    .history-item {
+      background: var(--secondary-color);
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .history-item:hover {
+      background: var(--primary-color);
+      color: white;
+    }
+
+    .sidebar-footer {
+      padding: 15px;
+      border-top: 1px solid #ccc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-footer button {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .sidebar-footer button:hover {
+      background: #2563eb;
+    }
+
+    /* Main Chat Section */
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--chat-bg);
+    }
+
+    .chat-header {
+      padding: 20px;
+      font-size: 22px;
+      font-weight: bold;
+      border-bottom: 1px solid #ccc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-header button {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: var(--text-color);
+    }
+
+    .chat-box {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .message {
+      max-width: 70%;
+      padding: 12px;
+      border-radius: 10px;
+      line-height: 1.5;
+      word-wrap: break-word;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .bot {
+      background: var(--bot-msg-bg);
+      align-self: flex-start;
+    }
+
+    .user {
+      background: var(--user-msg-bg);
+      align-self: flex-end;
+    }
+
+    /* Typing Indicator */
+    .typing-indicator {
+      display: none;
+      align-self: flex-start;
+      font-style: italic;
+      opacity: 0.7;
+    }
+
+    /* Input Area */
+    .input-area {
+      display: flex;
+      padding: 15px;
+      border-top: 1px solid #ccc;
+      background: var(--secondary-color);
+    }
+
+    .input-area input {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      margin-right: 10px;
+    }
+
+    .input-area button {
+      background: var(--primary-color);
+      border: none;
+      padding: 12px 18px;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .input-area button:hover {
+      background: #2563eb;
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from {opacity: 0; transform: translateY(10px);}
+      to {opacity: 1; transform: translateY(0);}
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #aaa;
+      border-radius: 4px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">Chat History</div>
+    <div class="history" id="history"></div>
+    <div class="sidebar-footer">
+      <button onclick="clearHistory()">Clear</button>
+      <button onclick="exportHistory()">Export</button>
+    </div>
+  </div>
+
+  <!-- Chat Section -->
+  <div class="chat-container">
+    <div class="chat-header">
+      <span>Medical Chatbot 🤖</span>
+      <button onclick="toggleDarkMode()"><i class="fa-solid fa-moon"></i></button>
+    </div>
+
+    <div class="chat-box" id="chat-box">
+      <!-- Messages appear here -->
+    </div>
+
+    <div class="typing-indicator" id="typing-indicator">Bot is typing...</div>
+
+    <div class="input-area">
+      <input type="text" id="msg" placeholder="Type your question..." onkeydown="if(event.key==='Enter'){sendMessage()}">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const chatBox = document.getElementById("chat-box");
+    const msgInput = document.getElementById("msg");
+    const typingIndicator = document.getElementById("typing-indicator");
+    const historyDiv = document.getElementById("history");
+    let chatHistory = [];
+
+    function addMessage(content, sender) {
+      const msg = document.createElement("div");
+      msg.classList.add("message", sender);
+      msg.textContent = content;
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = msgInput.value.trim();
+      if (!text) return;
+
+      addMessage(text, "user");
+      chatHistory.push({ role: "user", content: text });
+      msgInput.value = "";
+
+      typingIndicator.style.display = "block";
+
+      try {
+        const res = await fetch("/get", {
+          method: "POST",
+          body: new URLSearchParams({ msg: text }),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        });
+
+        const data = await res.text();
+        typingIndicator.style.display = "none";
+        addMessage(data, "bot");
+        chatHistory.push({ role: "bot", content: data });
+        updateHistory();
+      } catch (err) {
+        typingIndicator.style.display = "none";
+        addMessage("Error: Unable to fetch response", "bot");
+      }
+    }
+
+    function updateHistory() {
+      historyDiv.innerHTML = "";
+      chatHistory.forEach((item, index) => {
+        if (item.role === "user") {
+          const historyItem = document.createElement("div");
+          historyItem.className = "history-item";
+          historyItem.textContent = item.content;
+          historyItem.onclick = () => loadConversation(index);
+          historyDiv.appendChild(historyItem);
+        }
+      });
+    }
+
+    function loadConversation(index) {
+      chatBox.innerHTML = "";
+      for (let i = 0; i <= index + 1 && i < chatHistory.length; i++) {
+        addMessage(chatHistory[i].content, chatHistory[i].role);
+      }
+    }
+
+    function clearHistory() {
+      chatHistory = [];
+      historyDiv.innerHTML = "";
+      chatBox.innerHTML = "";
+    }
+
+    function exportHistory() {
+      const blob = new Blob([JSON.stringify(chatHistory, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "chat_history.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark");
+    }
+  </script>
+</body>
+</html>

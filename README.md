@@ -127,4 +127,8 @@ open up localhost:
    - AWS_DEFAULT_REGION
    - ECR_REPO
    - PINECONE_API_KEY
+<<<<<<< HEAD
    - OPENAI_API_KEY
+=======
+   - OPENAI_API_KEY
+>>>>>>> 53bc230551bff87ec065030d4ac9a0161a4f6f6c
