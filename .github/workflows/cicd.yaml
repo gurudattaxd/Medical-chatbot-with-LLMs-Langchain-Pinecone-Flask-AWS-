@@ -6,7 +6,7 @@ on:
 
 jobs:
   Continuous-Integration:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted   # 👈 changed from ubuntu-latest
 
     steps:
       - name: Checkout
@@ -42,7 +42,7 @@ jobs:
 
   Continuous-Deployment:
     needs: Continuous-Integration
-    runs-on: self-hosted
+    runs-on: self-hosted   # 👈 still self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v3
