@@ -1,6 +1,7 @@
-from langchain.document_loaders import PyPDFLoader, DirectoryLoader
+# ✅ Updated imports only
+from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 
 
@@ -51,10 +52,6 @@ def text_split(minimal_docs):
     texts_chunk = text_splitter.split_documents(minimal_docs)
     return texts_chunk
     
-    
-    
-
-from langchain_huggingface import HuggingFaceEmbeddings   # <-- new recommended import
 
 def download_embeddings():
     """Download the embeddings model from HuggingFace"""
