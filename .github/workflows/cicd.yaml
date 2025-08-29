@@ -1,81 +1,50 @@
-name: Deploy Application Docker Image to EC2
+name: Deploy Application to EC2 via SSH
 
 on:
   push:
     branches: [ main ]
 
-permissions:
-  contents: read
-
 jobs:
-  continuous-integration:
-    name: Build and Push to ECR
+  build-and-deploy:
     runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.build-image.outputs.image }}   # <-- Pass image reference to next job
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPOSITORY: ${{ secrets.ECR_REPO }}
-          IMAGE_TAG: ${{ github.sha }}
+      - name: Build and Push Docker image to Docker Hub
         run: |
-          echo "Building Docker image..."
-          docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" .
-          echo "Pushing Docker image..."
-          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
-          echo "image=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          IMAGE="${{ secrets.DOCKER_USERNAME }}/myapp:${{ github.sha }}"
+          echo "Building image: $IMAGE"
+          docker build -t $IMAGE .
+          echo "Pushing image..."
+          docker push $IMAGE
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
-  continuous-deployment:
-    name: Pull and Run on EC2
-    needs: continuous-integration
-    runs-on: self-hosted   # <-- your EC2 runner must be self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+          host: ${{ secrets.EC2_HOST }}          # Your EC2 IPv4 address
+          username: ubuntu                       # Default user for Ubuntu AMIs
+          key: ${{ secrets.EC2_SSH_KEY }}        # Your private SSH key (PEM contents)
+          script: |
+            IMAGE="${{ env.IMAGE }}"
+            echo "Pulling latest image: $IMAGE"
+            docker pull $IMAGE
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+            echo "Stopping old container..."
+            docker ps -aq --filter "name=app" | xargs -r docker rm -f
 
-      - name: Pull and restart container
-        run: |
-          IMAGE="${{ needs.continuous-integration.outputs.image }}"
-          echo "Pulling image: $IMAGE"
-          docker pull "$IMAGE"
-
-          echo "Stopping old container (if running)..."
-          docker ps -aq --filter "name=app" | xargs -r docker rm -f
-
-          echo "Starting new container..."
-          docker run -d --name app \
-            -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
-            -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
-            -e AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}" \
-            -e PINECONE_API_KEY="${{ secrets.PINECONE_API_KEY }}" \
-            -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-            -e OPENAI_API_BASE="${{ secrets.OPENAI_API_BASE }}" \
-            -p 8080:8080 \
-            "$IMAGE"
+            echo "Starting new container..."
+            docker run -d --name app \
+              -e PINECONE_API_KEY=${{ secrets.PINECONE_API_KEY }} \
+              -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+              -e OPENAI_API_BASE=${{ secrets.OPENAI_API_BASE }} \
+              -p 8080:8080 \
+              $IMAGE
